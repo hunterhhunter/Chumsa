@@ -1,4 +1,6 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, setIcon } from 'obsidian';
+import { SmartEmbedModel } from 'smart-embed-model';
+import { SmartEmbedOpenAIAdapter } from 'smart-embed-model/adapters/openai';
 
 // Remember to rename these classes and interfaces!
 
@@ -12,14 +14,45 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 
 export default class MyPlugin extends Plugin {
 	settings: MyPluginSettings;
+	embedModel: SmartEmbedModel;
+
 
 	async onload() {
 		await this.loadSettings();
+		this.registerMarkdownPostProcessor((element, context) => {
+			// 렌더링된 요소 안에서 모든 헤딩 태그를 찾기
+			const headings = element.querySelectorAll("h1, h2, h3, h4, h5, h6");
 
+			// 찾은 각 헤딩에 대해 아이콘을 추가
+			headings.forEach(headings => {
+				if (headings.querySelector(".chumsa-icon")) {
+					return;
+				}
+
+				// 아이콘으로 사용할 span 요소 생성
+				const iconEl = headings.createEl('span', {
+                    cls: 'chumsa-icon', // CSS 스타일링을 위한 클래스
+                    attr: {
+                        'aria-label': '관련 자료 찾기', // 마우스를 올렸을 때 나올 툴팁
+                    }
+                });
+
+				setIcon(iconEl, 'link');
+
+                // 아이콘 클릭 시 실행할 이벤트를 등록합니다.
+                iconEl.addEventListener('click', () => {
+                    // 여기에 아이콘 클릭 시 실행될 로직을 작성합니다.
+                    // 예: 사이드바 열고 관련 자료 검색 결과 보여주기
+                    console.log(`'${headings.textContent}' 문단과 관련된 자료를 검색합니다.`);
+                    // this.openSideBarWithResults(heading.textContent);
+                });
+
+			})
+		})
 		// This creates an icon in the left ribbon.
 		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
 			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
+			new Notice('자동화 테스팅23232332');
 		});
 		// Perform additional things with the ribbon
 		ribbonIconEl.addClass('my-plugin-ribbon-class');
@@ -76,6 +109,24 @@ export default class MyPlugin extends Plugin {
 
 		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
 		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
+	}
+
+	async initialize() {
+		console.log("첨사: 본격적인 초기화를 시작합니다...");
+
+		this.embedModel = new SmartEmbedModel({
+			model_key: 'text-embedding-3-small',
+			settings: {
+			  api_key: ''
+			},
+			adapters: {
+			  openai: SmartEmbedOpenAIAdapter
+			}
+		  }) as any;
+
+		await this.startIndexing();
+		
+		console.log("첨사: 초기화가 완료되었습니다.");
 	}
 
 	onunload() {

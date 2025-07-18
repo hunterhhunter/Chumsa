@@ -6,3 +6,12 @@ available in the app when your plugin is enabled.
 If your plugin does not need CSS, delete this file.
 
 */
+.chumsa-icon {
+    margin-left: 8px; /* 헤딩과의 간격 */
+    cursor: pointer; /* 마우스 커서를 포인터로 변경 */
+    opacity: 0.5; /* 평소에는 반투명하게 */
+}
+
+.chumsa-icon:hover {
+    opacity: 1; /* 마우스를 올리면 진하게 */
+}
