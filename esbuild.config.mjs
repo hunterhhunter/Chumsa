@@ -2,7 +2,7 @@
 
 import esbuild from "esbuild";
 import process from "process";
-import fs from "fs/promises";
+import fs from "fs/promises"; // manifest.json 복사를 위해 남겨둡니다.
 import 'dotenv/config';
 
 const banner =
@@ -12,7 +12,6 @@ if you want to view the source, please visit the github repository of this plugi
 */
 `;
 
-// .env 파일에서 Vault 경로를 읽어옵니다.
 const vaultPluginPath = process.env.OBSIDIAN_PLUGIN_PATH;
 
 if (!vaultPluginPath) {
@@ -22,54 +21,53 @@ if (!vaultPluginPath) {
 
 const prod = (process.argv[2] === "production");
 
-// 1. 빌드가 끝난 후 파일을 복사하는 플러그인을 정의합니다.
-const copyPlugin = {
-  name: 'copy-to-obsidian',
-  setup(build) {
-    build.onEnd(async (result) => {
-      if (result.errors.length === 0) {
-        console.log("Build succeeded, copying files...");
-        await fs.copyFile("main.js", `${vaultPluginPath}/main.js`);
-        await fs.copyFile("manifest.json", `${vaultPluginPath}/manifest.json`);
-        // styles.css는 존재할 경우에만 복사합니다.
-        try {
-          await fs.copyFile("styles.css", `${vaultPluginPath}/styles.css`);
-        } catch (e) {
-          // styles.css가 없어도 에러는 아님
-        }
-        console.log("✅ Plugin files copied to vault.");
-      }
-    });
-  },
-};
-
-
-// 2. esbuild.build 대신 esbuild.context를 사용합니다.
-try {
-  const context = await esbuild.context({
-    banner: { js: banner },
-    entryPoints: ["src/main.ts"],
-    bundle: true,
-    external: ["obsidian"],
-    format: "cjs",
-    target: "es2018",
-    logLevel: "info",
-    sourcemap: prod ? false : "inline",
-    treeShaking: true,
-    outfile: "main.js",
-    plugins: [copyPlugin], // 3. 정의한 플러그인을 여기에 추가합니다.
-  });
-
-  if (prod) {
-    await context.rebuild();
-    console.log("Production build complete.");
-    await context.dispose();
-  } else {
-    // 4. context.watch()를 호출하여 파일 변경 감지를 시작합니다.
-    await context.watch();
-    console.log("👀 Watching for changes...");
+// [수정] esbuild context를 생성합니다.
+const context = await esbuild.context({
+  banner: { js: banner },
+  entryPoints: ["src/main.ts"],
+  bundle: true,
+  external: ["obsidian"],
+  format: "cjs",
+  target: "es2018",
+  logLevel: "info",
+  sourcemap: prod ? false : "inline",
+  treeShaking: true,
+  // [핵심 수정] outfile 경로를 Vault 플러그인 폴더로 직접 지정합니다.
+  outfile: `${vaultPluginPath}/main.js`,
+  platform: 'node',
+  define: {
+    'process.env.OPENAI_API_KEY': JSON.stringify(process.env.OPENAI_API_KEY)
   }
-} catch (e) {
-  console.error(e);
-  process.exit(1);
+});
+
+// manifest.json과 styles.css는 빌드와 별개로 복사합니다.
+async function copyStaticFiles() {
+  try {
+    await fs.copyFile("manifest.json", `${vaultPluginPath}/manifest.json`);
+    await fs.copyFile("styles.css", `${vaultPluginPath}/styles.css`);
+    console.log("✅ Static files (manifest, styles) copied to vault.");
+  } catch (e) {
+    // styles.css가 없는 것은 괜찮습니다.
+    if (e.code !== 'ENOENT' || !e.path.includes('styles.css')) {
+      console.error("Error copying static files:", e);
+    }
+  }
+}
+
+// 빌드 또는 감시 모드를 실행합니다.
+if (prod) {
+  await context.rebuild();
+  await copyStaticFiles(); // 프로덕션 빌드 후 한 번 복사
+  console.log("Production build complete.");
+  await context.dispose();
+} else {
+  // 감시 모드 시작 전, 먼저 한 번 빌드하고 파일을 복사합니다.
+  await context.rebuild();
+  await copyStaticFiles();
+  
+  await context.watch();
+  console.log("👀 Watching for changes...");
+  
+  // (선택사항) manifest.json이나 styles.css 파일 변경도 감시하려면
+  // chokidar 같은 라이브러리를 사용하거나 간단한 fs.watch를 추가할 수 있습니다.
 }
