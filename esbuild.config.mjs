@@ -1,5 +1,3 @@
-// esbuild.config.mjs
-
 import esbuild from "esbuild";
 import process from "process";
 import fs from "fs/promises"; // manifest.json 복사를 위해 남겨둡니다.

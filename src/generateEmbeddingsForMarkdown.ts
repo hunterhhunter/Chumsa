@@ -1,11 +1,7 @@
 import { parse_markdown_blocks } from 'smart-blocks/parsers/markdown';
-import { EmbededData } from './structures';
+import { EmbededData, EmbedResult } from './structures';
 import { SmartEmbedModel } from 'smart-embed-model';
 
-interface EmbedResult {
-    vec: number[],
-    tokens: number,
-} 
 
 /**
  * 하나의 마크다운 파일 내용(content)을 입력받아, 구조적인 블록으로 나눈 뒤
@@ -30,14 +26,14 @@ export async function generateEmbeddingsForMarkdown(model: SmartEmbedModel, cont
         console.log(`  - Embedding block: ${key}`);
         const result = await model.embed(blockContent) as EmbedResult;
 
-        const embededEach: EmbededData = {
+        const embeddedEach: EmbededData = {
             vector: result.vec,
             text: blockContent,
             key: key,
             filePath: filePath
         };
 
-        embeddingResults.push(embededEach);
+        embeddingResults.push(embeddedEach);
     }
 
     return embeddingResults;

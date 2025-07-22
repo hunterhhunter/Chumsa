@@ -2,7 +2,8 @@ import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Set
 import { SmartEmbedModel } from 'smart-embed-model';
 import { SmartEmbedOpenAIAdapter } from 'smart-embed-model/adapters/openai';
 import { generateEmbeddingsForMarkdown} from './generateEmbeddingsForMarkdown';
-import { EmbededData } from './structures';
+import { EmbededData, VectorData } from './structures';
+import { HNSWLibAdapter } from './hnswAdapter';
 
 // Remember to rename these classes and interfaces!
 
@@ -18,6 +19,7 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 export default class MyPlugin extends Plugin {
 	settings: SampleSettingTab;
 	embedModel: SmartEmbedModel;
+	vectorDB: HNSWLibAdapter;
 
 	async onload() {
 		await this.loadSettings();
@@ -49,7 +51,6 @@ export default class MyPlugin extends Plugin {
                     console.log(`'${headings.textContent}' 문단과 관련된 자료를 검색합니다.`);
                     // this.openSideBarWithResults(heading.textContent);
                 });
-
 			})
 		})
 		
@@ -58,6 +59,10 @@ export default class MyPlugin extends Plugin {
 
 		// 옵시디언 UI가 완전히 준비되면 initialize 함수를 실행하도록 예약
 		//this.app.workspace.onLayoutReady(this.initialize.bind(this));
+
+		// TODO: 벡터DB 어댑터 테스트
+		this.vectorDB = new HNSWLibAdapter();
+		this.vectorDB.initialize('saved_index', 1536, 10000);
 	}
 
 	/**
@@ -131,6 +136,20 @@ export default class MyPlugin extends Plugin {
 
 		await this.app.vault.adapter.write(savingPath, JSON.stringify(newDatas, null, 2));
 		console.log(`${newDatas.length}개의 임베딩 데이터가 캐시에 추가됨.`);
+	}
+
+	async saveMaps() {
+		const idToLabel = this.vectorDB.getIdToLabelMap();
+		const labelToId = this.vectorDB.getLabelToIdMap();
+		const vectorDataMap = this.vectorDB.getVectorDataMap();
+
+		const saveIdToLabel = JSON.stringify(Object.fromEntries(idToLabel));
+		const saveLabelToId = JSON.stringify(Object.fromEntries(labelToId));
+		const saveVectorDataMap = JSON.stringify(Object.fromEntries(vectorDataMap));
+
+		await this.app.vault.adapter.write(normalizePath(`${this.manifest.dir}/ID_TO_LABEL_MAP.json`), saveIdToLabel);
+		await this.app.vault.adapter.write(normalizePath(`${this.manifest.dir}/LABEL_TO_ID_MAP.json`), saveLabelToId);
+		await this.app.vault.adapter.write(normalizePath(`${this.manifest.dir}/VECTOR_DATA_MAP.json`), saveVectorDataMap);
 	}
 
 	onunload() {
