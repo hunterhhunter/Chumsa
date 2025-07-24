@@ -1,8 +1,10 @@
 import { IVectorDB, SearchResult, VectorData } from './structures';
 import { HierarchicalNSW } from 'hnswlib-wasm/dist/hnswlib-wasm';
 import { loadHnswlib, syncFileSystem, HnswlibModule } from 'hnswlib-wasm';
+import { normalizePath, App } from 'obsidian';
 
 export class HNSWLibAdapter implements IVectorDB {
+    private app: App;
     private hnswlib: HnswlibModule;
     private hnswIndex: HierarchicalNSW;
     private indexFileName: string;
@@ -11,13 +13,12 @@ export class HNSWLibAdapter implements IVectorDB {
     private idToLabelMap: Map<number, number> = new Map();
     private vectorDataMap: Map<number, VectorData> = new Map();
 
-    public constructor() {
-        
+    public constructor(app: App) {
+        this.app = app;
     }
 
     public async initialize(indexFileName: string, dimensions: number, maxElements: number): Promise<boolean> {
         this.hnswlib = await loadHnswlib();
-        this.hnswlib.EmscriptenFileSystemManager.setDebugLogs(true);
         this.indexFileName = indexFileName;
         this.dimension = dimensions;
 
@@ -28,9 +29,9 @@ export class HNSWLibAdapter implements IVectorDB {
         if (!exist) {
             this.hnswIndex.initIndex(maxElements, 32, 150, 42);
             this.hnswIndex.setEfSearch(32);
-            this.hnswIndex.writeIndex(indexFileName);
         } else {
             this.hnswIndex.readIndex(indexFileName, maxElements);
+            await this.loadMaps();
             this.hnswIndex.setEfSearch(32);
         }
 
@@ -47,7 +48,6 @@ export class HNSWLibAdapter implements IVectorDB {
             if (!this.idToLabelMap.get(each.id)) {
                 vectorsToAdd.push(each.vector);
                 itemsToAdd.push(each);
-                this.vectorDataMap.set(each.id, each);
             }
         }
 
@@ -59,9 +59,9 @@ export class HNSWLibAdapter implements IVectorDB {
             const item = itemsToAdd[i];
             this.labelToIdMap.set(label, item.id);
             this.idToLabelMap.set(item.id, label);
+            this.vectorDataMap.set(item.id, item);
         });
 
-        console.log(`${vectorsToAdd.length}개의 새로운 아이템이 인덱스에 추가되었습니다.`);
     }
 
     async search(queryVector: number[], top_k: number): Promise<SearchResult[]> {
@@ -76,14 +76,12 @@ export class HNSWLibAdapter implements IVectorDB {
             const id = this.labelToIdMap.get(label);
 
             if (id === undefined) {
-                console.log(`${label}에 해당하는 ID가 없습니다.`);
                 continue;
             }
 
             const originalData = this.vectorDataMap.get(id);
 
             if (originalData === undefined) {
-                console.log(`${id}에 해당하는 VectorData가 없습니다.`);
                 continue;
             }
 
@@ -102,18 +100,82 @@ export class HNSWLibAdapter implements IVectorDB {
 
         return searchresults;
     }
-
+    
     async save(): Promise<void> {
-        // 1. Index를 저장
         await this.hnswIndex.writeIndex(this.indexFileName);
+        await this.saveMaps();
+    }
+
+    async saveMaps(): Promise<void> {
+        const idToLabel = this.getIdToLabelMap();
+		const labelToId = this.getLabelToIdMap();
+		const vectorDataMap = this.getVectorDataMap();
+
+		const saveIdToLabel = JSON.stringify(Object.fromEntries(idToLabel));
+		const saveLabelToId = JSON.stringify(Object.fromEntries(labelToId));
+		const saveVectorDataMap = JSON.stringify(Object.fromEntries(vectorDataMap));
+
+		await this.app.vault.adapter.write(normalizePath(`${this.app.vault.configDir}/plugins/Chumsa/ID_TO_LABEL_MAP.json`), saveIdToLabel);
+		await this.app.vault.adapter.write(normalizePath(`${this.app.vault.configDir}/plugins/Chumsa/LABEL_TO_ID_MAP.json`), saveLabelToId);
+		await this.app.vault.adapter.write(normalizePath(`${this.app.vault.configDir}/plugins/Chumsa/VECTOR_DATA_MAP.json`), saveVectorDataMap);
+    }
+
+    async loadMaps(): Promise<void> {
+
+        const mapPaths = {
+            idToLabel: normalizePath(`${this.app.vault.configDir}/plugins/Chumsa/ID_TO_LABEL_MAP.json`),
+            labelToId: normalizePath(`${this.app.vault.configDir}/plugins/Chumsa/LABEL_TO_ID_MAP.json`),
+            vectorData: normalizePath(`${this.app.vault.configDir}/plugins/Chumsa/VECTOR_DATA_MAP.json`),
+        };
+
+    try {
+        const [idToLabelJson, labelToIdJson, vectorDataJson] = await Promise.all([
+            this.app.vault.adapter.read(mapPaths.idToLabel),
+            this.app.vault.adapter.read(mapPaths.labelToId),
+            this.app.vault.adapter.read(mapPaths.vectorData),
+        ]);
+
+        const idToLabelObj = JSON.parse(idToLabelJson);
+        const labelToIdObj = JSON.parse(labelToIdJson);
+        const vectorDataObj = JSON.parse(vectorDataJson);
+        
+        this.idToLabelMap = new Map(
+            Object.entries(idToLabelObj).map(([key, value]) => [Number(key), value as number])
+        );
+
+        this.labelToIdMap = new Map(
+            Object.entries(labelToIdObj).map(([key, value]) => [Number(key), value as number])
+        );
+
+        this.vectorDataMap = new Map(
+            Object.entries(vectorDataObj).map(([key, value]) => [Number(key), value as VectorData])
+        );
+
+        } catch (error) {
+            this.idToLabelMap.clear();
+            this.labelToIdMap.clear();
+            this.vectorDataMap.clear();
+        }
+    }
+    
+    async resetMaps() {
+        this.labelToIdMap = new Map();
+        this.idToLabelMap = new Map();
+        this.vectorDataMap = new Map();
     }
 
     async count(): Promise<number> {
-        return this.vectorDataMap.size;
+        return this.hnswIndex.getCurrentCount();
     }
 
-    async loadMaps() {
-        // TODO: 불러온 String으로 Map 구성하는 코드 작성해야함.
+    async resetIndex(maxElements: number, dimensions: number): Promise<void> {
+        this.hnswIndex = new this.hnswlib.HierarchicalNSW('cosine', dimensions, this.indexFileName);
+        await syncFileSystem('read');
+        this.hnswIndex.initIndex(maxElements, 32, 150, 42);
+        this.hnswIndex.setEfSearch(32);
+        
+        await this.resetMaps();
+        this.save();
     }
 
     getIdToLabelMap() {

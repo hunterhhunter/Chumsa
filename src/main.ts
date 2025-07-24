@@ -2,8 +2,8 @@ import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Set
 import { SmartEmbedModel } from 'smart-embed-model';
 import { SmartEmbedOpenAIAdapter } from 'smart-embed-model/adapters/openai';
 import { generateEmbeddingsForMarkdown} from './generateEmbeddingsForMarkdown';
-import { EmbededData, VectorData } from './structures';
-import { HNSWLibAdapter } from './hnswAdapter';
+import { EmbededData, VectorData, createMockData } from './structures';
+import { HNSWLibAdapter } from './hnswAdapter'
 
 // Remember to rename these classes and interfaces!
 
@@ -60,9 +60,26 @@ export default class MyPlugin extends Plugin {
 		// 옵시디언 UI가 완전히 준비되면 initialize 함수를 실행하도록 예약
 		//this.app.workspace.onLayoutReady(this.initialize.bind(this));
 
-		// TODO: 벡터DB 어댑터 테스트
-		this.vectorDB = new HNSWLibAdapter();
-		this.vectorDB.initialize('saved_index', 1536, 10000);
+		// DONE: 벡터DB 어댑터 테스트
+			// DONE: Mock 데이터로 addItem, Search, Save까지 테스트
+		// TODO: Index 초기화 방법 찾고 테스트
+// 		this.vectorDB = await new HNSWLibAdapter(this.app);
+// 		await this.vectorDB.initialize('saved_index.dat', 1536, 10000);
+// 		await this.vectorDB.resetIndex(10000, 1536);
+// 		const mock = createMockData(10, 1536);
+// 		await this.vectorDB.addItem(mock);
+// 		const query = createMockData(1, 1536).at(0)!;
+// 		const searchResult = this.vectorDB.search(query.vector, 10);
+// //
+// 		(await searchResult).forEach((item, index) => {
+// 			console.log(`${index+1}번째로 가까운 아이템: ${item.id}, ${item.score}`);
+// 		})
+
+// 		await this.vectorDB.saveMaps();
+// 		await this.vectorDB.save();
+
+// 		console.log(`지금 인덱스에 ${(await this.vectorDB.count()).valueOf()}개 있음.`);
+		await this.testHNSWLibAdapterRoundTrip();
 	}
 
 	/**
@@ -138,20 +155,6 @@ export default class MyPlugin extends Plugin {
 		console.log(`${newDatas.length}개의 임베딩 데이터가 캐시에 추가됨.`);
 	}
 
-	async saveMaps() {
-		const idToLabel = this.vectorDB.getIdToLabelMap();
-		const labelToId = this.vectorDB.getLabelToIdMap();
-		const vectorDataMap = this.vectorDB.getVectorDataMap();
-
-		const saveIdToLabel = JSON.stringify(Object.fromEntries(idToLabel));
-		const saveLabelToId = JSON.stringify(Object.fromEntries(labelToId));
-		const saveVectorDataMap = JSON.stringify(Object.fromEntries(vectorDataMap));
-
-		await this.app.vault.adapter.write(normalizePath(`${this.manifest.dir}/ID_TO_LABEL_MAP.json`), saveIdToLabel);
-		await this.app.vault.adapter.write(normalizePath(`${this.manifest.dir}/LABEL_TO_ID_MAP.json`), saveLabelToId);
-		await this.app.vault.adapter.write(normalizePath(`${this.manifest.dir}/VECTOR_DATA_MAP.json`), saveVectorDataMap);
-	}
-
 	onunload() {
 
 	}
@@ -163,6 +166,66 @@ export default class MyPlugin extends Plugin {
 	async saveSettings() {
 		await this.saveData(this.settings);
 	}
+
+	async testHNSWLibAdapterRoundTrip() {
+        console.log("--- HNSWLibAdapter Round Trip 테스트 시작 ---");
+        new Notice("Adapter 테스트를 시작합니다. (콘솔 확인)");
+
+        const DB_NAME = "test_index";
+        const DIMENSIONS = 1536;
+        const MAX_ELEMENTS = 1000;
+
+        // --- 1단계: 초기화 (새 인덱스 생성) ---
+        const adapter1 = new HNSWLibAdapter(this.app);
+        await adapter1.initialize(DB_NAME, DIMENSIONS, MAX_ELEMENTS);
+        console.log("1. 새로운 어댑터 초기화 완료.");
+        
+        // --- 2단계: 데이터 추가 ---
+        // [수정] 제공된 createMockData 함수를 사용하여 테스트 데이터를 생성합니다.
+        const mockData: VectorData[] = createMockData(10, DIMENSIONS);
+        await adapter1.addItem(mockData);
+        const countBeforeSave = await adapter1.count();
+        console.log(`2. 목 데이터 ${countBeforeSave}개 추가 완료.`);
+        
+        // --- 3단계: 검색 (저장 전) ---
+        const queryVector = mockData[0].vector;
+        const resultsBeforeSave = await adapter1.search(queryVector, 3);
+        console.log("3. 저장 전 검색 결과:", resultsBeforeSave.map(r => ({id: r.id, score: r.score})));
+        
+        // --- 4단계: 저장 ---
+        await adapter1.save();
+        console.log("4. 인덱스 및 맵 데이터 저장 완료.");
+
+        // --- 5단계: 초기화 (기존 인덱스 로드) ---
+        console.log("\n--- 새로운 어댑터 인스턴스로 데이터 로드 테스트 ---");
+        const adapter2 = new HNSWLibAdapter(this.app);
+        await adapter2.initialize(DB_NAME, DIMENSIONS, MAX_ELEMENTS);
+        console.log("5. 기존 데이터로 어댑터 초기화 완료.");
+
+        // --- 6단계: 개수 확인 (로드 후) ---
+        const countAfterLoad = await adapter2.count();
+        console.log(`6. 로드 후 아이템 개수: ${countAfterLoad}개 (저장 전: ${countBeforeSave}개)`);
+        if (countBeforeSave !== countAfterLoad) {
+            console.error("🚨 테스트 실패: 저장 전과 후의 아이템 개수가 다릅니다!");
+            return;
+        }
+
+        // --- 7단계: 검색 (로드 후) ---
+        const resultsAfterLoad = await adapter2.search(queryVector, 3);
+        console.log("7. 로드 후 검색 결과:", resultsAfterLoad.map(r => ({id: r.id, score: r.score})));
+        if (resultsBeforeSave[0].id !== resultsAfterLoad[0].id) {
+             console.error("🚨 테스트 실패: 저장 전과 후의 검색 결과가 다릅니다!");
+             return;
+        }
+        
+        // --- 8단계: 초기화 (리셋) ---
+        await adapter2.resetIndex(MAX_ELEMENTS, DIMENSIONS); // reset 함수에도 maxElements 전달
+        const countAfterReset = await adapter2.count();
+        console.log(`8. 인덱스 리셋 완료. 리셋 후 아이템 개수: ${countAfterReset}개`);
+
+        new Notice("Adapter 테스트를 성공적으로 완료했습니다!");
+        console.log("--- HNSWLibAdapter Round Trip 테스트 성공 ---");
+    }
 }
 
 class SampleSettingTab extends PluginSettingTab {
