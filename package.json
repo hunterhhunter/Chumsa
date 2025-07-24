@@ -14,6 +14,7 @@
 	"author": "",
 	"license": "MIT",
 	"devDependencies": {
+		"@types/murmurhash-js": "^1.0.6",
 		"@types/node": "^20.19.7",
 		"@typescript-eslint/eslint-plugin": "5.29.0",
 		"@typescript-eslint/parser": "5.29.0",
@@ -28,6 +29,7 @@
 	"dependencies": {
 		"hnswlib-wasm": "^0.8.2",
 		"js-tiktoken": "^1.0.19",
+		"murmurhash-js": "^1.0.0",
 		"obsidian": "latest",
 		"obsidian-smart-env": "file:../obsidian-smart-env",
 		"smart-blocks": "file:../jsbrains/smart-blocks",
