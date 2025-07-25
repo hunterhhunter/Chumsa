@@ -1,4 +1,5 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
+import { SearchResult } from "./structures";
 
 export const MY_VIEW_TYPE = "my-plugin-side-view";
 
@@ -16,7 +17,11 @@ export class MySideView extends ItemView {
     }
 
     async onOpen(): Promise<void> {
-        const container = this.containerEl.children[1];
+        // [수정] 뷰가 열릴 때, 뷰의 루트 컨테이너에 클래스를 추가합니다.
+        // 이것이 CSS가 적용될 기준점이 됩니다.
+        this.containerEl.addClass('chumsa-side-view');
+        
+        const container = this.contentEl;
         container.empty();
         container.createEl("h4", { text: "관련 노트를 찾아보세요." });
     }
@@ -25,20 +30,23 @@ export class MySideView extends ItemView {
         // Nothing to clean up.
     }
 
-    updateContent(results: {id: string ,text: string}[]) {
-        const container = this.containerEl.children[1];
-        container.empty(); // 이전 내용을 모두 지움
+    updateContent(results: SearchResult[]) {
+        const container = this.contentEl;
+        container.empty();
 
         if (results.length === 0) {
             container.createEl("p", { text: "관련된 내용이 없습니다." });
             return;
         }
 
-        // 검색 결과를 바탕으로 새로운 HTML 요소를 생성
         for (const result of results) {
             const div = container.createEl("div", { cls: "search-result-item" });
-            div.createEl("h5", { text: result.id });
-            div.createEl("p", { text: result.text.substring(0, 100) + "..." });
+            
+            div.createEl("h5", { text: result.metadata.filePath });
+            
+            const p = div.createEl("p");
+            p.createEl("strong", { text: `유사도: ${Math.round(result.score * 100)}%` });
+            p.appendText(` — ${result.metadata.text.substring(0, 100)}...`);
         }
     }
 }

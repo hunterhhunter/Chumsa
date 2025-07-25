@@ -15,3 +15,45 @@ If your plugin does not need CSS, delete this file.
 .chumsa-icon:hover {
     opacity: 1; /* 마우스를 올리면 진하게 */
 }
+
+.chumsa-side-view .view-content {
+  overflow-y: auto; /* 내용이 넘칠 경우, 세로 스크롤을 자동으로 생성 */
+  height: 100%;
+}
+
+/* 검색 결과 아이템 전체를 감싸는 div 스타일 */
+.search-result-item {
+  border: 1px solid var(--background-modifier-border); /* 테두리 */
+  border-radius: 8px;     /* 둥근 모서리 */
+  padding: 12px;          /* 내부 여백 */
+  margin-bottom: 10px;    /* 아이템 간의 하단 여백 */
+  cursor: pointer;          /* 마우스 커서를 포인터로 */
+}
+
+/* 마우스를 올렸을 때 배경색 변경 */
+.search-result-item:hover {
+  background-color: var(--background-secondary-alt);
+}
+
+/* 파일 경로(h5) 스타일 */
+.search-result-item h5 {
+  margin: 0 0 8px 0;   /* 위, 오른쪽, 아래, 왼쪽 여백 */
+  font-size: 0.9em;       /* 글자 약간 작게 */
+  color: var(--text-muted); /* 흐린 글자색 */
+  font-weight: 500;       /* 글자 두께 보통으로 */
+}
+
+/* 본문 내용(p) 스타일 */
+.search-result-item p {
+  margin: 0;
+  font-size: 1em;
+  color: var(--text-normal);
+}
+
+/* 유사도 점수(strong) 스타일 */
+.search-result-item p strong {
+  display: block; /* 줄바꿈을 위해 블록 요소로 변경 */
+  margin-bottom: 5px;
+  font-size: 0.9em;
+  color: var(--text-accent); /* 테마의 강조 색상 사용 */
+}
